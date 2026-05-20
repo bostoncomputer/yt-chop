@@ -43,10 +43,12 @@ yt-chop/
 
 ## Key Decisions
 
-- `youtubei.js` — used for all YouTube data. `Innertube.create({ generate_session_locally: true })` creates a session without an extra network round-trip. `getInfo(videoId)` returns player + next responses in one call; `basic_info` contains title, channel, and duration.
-- Transcript is fetched via the timedtext API (`info.captions.caption_tracks[n].base_url + "&fmt=json3"`), not the InnerTube continuation endpoint (which returns 400 server-side). Events return `{ tStartMs, dDurationMs, segs: [{utf8}] }` in milliseconds; `lib/transcript.ts` converts to seconds on the way out.
-- Track selection: manual English → auto-generated English → first available track. No oEmbed call needed — metadata comes from `basic_info`.
-- Videos with no caption tracks throw `"No captions available for this video"` which the route converts to HTTP 422.
+- **Local-only app** — transcript route runs `yt-dlp` as a subprocess. `yt-dlp` must be installed on the host machine: `pip install yt-dlp`. The Vercel/edge deployment path is intentionally unsupported; `runtime = "nodejs"` is required in the route.
+- **yt-dlp transcript fetch** — two subprocess calls per request: (1) `yt-dlp --write-auto-sub --sub-lang en --skip-download --sub-format json3` writes a caption file to `os.tmpdir()`; (2) `yt-dlp --skip-download -j` dumps JSON for title/channel/duration. Uses `execFile` (not `exec`) to avoid shell metacharacter issues with the `%(id)s` output template on Windows.
+- **Caption format: json3** — yt-dlp auto-sub VTT has rolling-window cues (each cue accumulates words from prior cue), producing duplicates. `json3` gives clean non-overlapping `{tStartMs, dDurationMs, segs}` events matching the pre-yt-dlp shape; file extension is `.en.json3`.
+- **Output template** — uses `ytchop-%(id)s` (no `%(ext)s`) so the caption file is predictably `ytchop-{videoId}.en.json3` in the temp dir. File is deleted after parsing.
+- Videos with no English auto-sub track produce no caption file; `lib/transcript.ts` detects the missing file and throws `"No captions available for this video"` → HTTP 422.
+- yt-dlp may warn about missing JS runtime (Deno/Node.js for PO token); install `deno` or pass `--js-runtimes nodejs` to suppress. The extractor works without it but some throttled videos may hit 429.
 - Tailwind v4 — uses `@import "tailwindcss"` and `@theme inline {}` blocks, not a separate `tailwind.config.js`.
 
 ## Dev

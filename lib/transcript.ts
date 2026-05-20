@@ -1,14 +1,10 @@
-import { Innertube, ClientType } from "youtubei.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile, unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
-interface TimedTextEvent {
-  tStartMs: number;
-  dDurationMs: number;
-  segs?: { utf8: string }[];
-}
-
-interface TimedTextResponse {
-  events?: TimedTextEvent[];
-}
+const execFileAsync = promisify(execFile);
 
 export interface TranscriptSegment {
   start: number;
@@ -27,103 +23,102 @@ export interface TranscriptResult {
   transcript: TranscriptSegment[];
 }
 
-// Ordered by reliability against anti-bot detection
-const FALLBACK_CLIENTS = ["TV_EMBEDDED", "IOS", "WEB_EMBEDDED", "ANDROID"] as const;
-type FallbackClient = (typeof FALLBACK_CLIENTS)[number];
+interface Json3Seg {
+  utf8: string;
+}
 
-async function getInfoChecked(youtube: Innertube, videoId: string, client: FallbackClient) {
-  const info = await youtube.getBasicInfo(videoId, { client });
-  const ps = info.playability_status;
+interface Json3Event {
+  tStartMs: number;
+  dDurationMs: number;
+  segs?: Json3Seg[];
+}
 
-  if (ps?.status === "ERROR") throw new Error("Video not found");
+interface Json3File {
+  events?: Json3Event[];
+}
 
-  if (ps?.status === "LOGIN_REQUIRED") {
-    const reason = ps.reason.toLowerCase();
-    throw new Error(reason.includes("age") ? "Video is age-restricted" : "Video is private");
-  }
-
-  if (ps?.status === "UNPLAYABLE") {
-    throw new Error(`Video is unplayable: ${ps.reason}`);
-  }
-
-  return info;
+function isNotInstalled(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "ENOENT") return true;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return msg.includes("not recognized") || msg.includes("command not found");
 }
 
 export async function fetchTranscript(videoId: string): Promise<TranscriptResult> {
-  const youtube = await Innertube.create({
-    client_type: ClientType.TV_EMBEDDED,
-    generate_session_locally: true,
-  });
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const tmp = tmpdir();
+  // No %(ext)s in template — subtitle file is predictably ytchop-{id}.en.json3
+  const outputTemplate = join(tmp, "ytchop-%(id)s");
+  const captionPath = join(tmp, `ytchop-${videoId}.en.json3`);
 
-  let lastError: Error = new Error("No transcript available for this video");
-
-  for (const client of FALLBACK_CLIENTS) {
-    let info;
-    try {
-      info = await getInfoChecked(youtube, videoId, client);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // "Video not found" is definitive — no point trying other clients
-      if (msg === "Video not found") throw err;
-      lastError = err instanceof Error ? err : new Error(msg);
-      continue;
+  // Step 1: Fetch auto-generated English captions as JSON3
+  try {
+    await execFileAsync("yt-dlp", [
+      "--write-auto-sub",
+      "--sub-lang", "en",
+      "--skip-download",
+      "--sub-format", "json3",
+      "--output", outputTemplate,
+      videoUrl,
+    ]);
+  } catch (err) {
+    if (isNotInstalled(err)) throw new Error("yt-dlp is not installed — run: pip install yt-dlp");
+    const stderr = (err as { stderr?: string }).stderr ?? "";
+    const detail = stderr || (err instanceof Error ? err.message : String(err));
+    const lower = detail.toLowerCase();
+    if (lower.includes("video unavailable") || lower.includes("this video is not available")) {
+      throw new Error("Video not found or unavailable");
     }
-
-    const tracks = info.captions?.caption_tracks ?? [];
-    // Prefer manual English, fall back to auto-generated English, then any track
-    const track =
-      tracks.find((t) => t.language_code === "en" && !t.kind) ??
-      tracks.find((t) => t.language_code === "en") ??
-      tracks[0];
-
-    if (!track?.base_url) {
-      lastError = new Error("No transcript available for this video");
-      continue;
-    }
-
-    console.log(`[yt-chop] client=${client} succeeded for ${videoId}`);
-
-    let res: Response;
-    try {
-      res = await fetch(track.base_url + "&fmt=json3");
-    } catch (err) {
-      throw new Error(`Network error fetching transcript: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    if (!res.ok) throw new Error(`Failed to fetch transcript data (HTTP ${res.status})`);
-
-    let data: TimedTextResponse;
-    try {
-      data = await res.json();
-    } catch {
-      throw new Error("Failed to parse transcript data");
-    }
-
-    const transcript: TranscriptSegment[] = (data.events ?? [])
-      .filter((ev): ev is TimedTextEvent & { segs: { utf8: string }[] } => !!ev.segs?.length)
-      .map((ev) => ({
-        start: ev.tStartMs / 1000,
-        duration: ev.dDurationMs / 1000,
-        text: ev.segs.map((s) => s.utf8).join("").replace(/\n/g, " ").trim(),
-      }))
-      .filter((seg) => seg.text.length > 0);
-
-    if (transcript.length === 0) {
-      lastError = new Error("No transcript available for this video");
-      continue;
-    }
-
-    const { title, channel, author, duration } = info.basic_info;
-
-    return {
-      metadata: {
-        title: title ?? "Unknown Title",
-        channel: channel?.name ?? author ?? "Unknown Channel",
-        durationSeconds: duration ?? null,
-      },
-      transcript,
-    };
+    throw new Error(`yt-dlp caption fetch failed: ${detail.trim()}`);
   }
 
-  throw lastError;
+  // Step 2: Read caption file — if missing, no captions track exists
+  let captionContent: string;
+  try {
+    captionContent = await readFile(captionPath, "utf-8");
+  } catch {
+    throw new Error("No captions available for this video");
+  } finally {
+    unlink(captionPath).catch(() => {});
+  }
+
+  // Step 3: Fetch metadata
+  let metadata: VideoMetadata;
+  try {
+    const { stdout } = await execFileAsync(
+      "yt-dlp",
+      ["--skip-download", "-j", videoUrl],
+      { maxBuffer: 10 * 1024 * 1024 }
+    );
+    const info = JSON.parse(stdout.trim());
+    metadata = {
+      title: info.title ?? "Unknown Title",
+      channel: info.uploader ?? info.channel ?? "Unknown Channel",
+      durationSeconds: typeof info.duration === "number" ? info.duration : null,
+    };
+  } catch (err) {
+    if (isNotInstalled(err)) throw new Error("yt-dlp is not installed — run: pip install yt-dlp");
+    throw new Error(`Failed to fetch metadata: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Step 4: Parse JSON3 caption format
+  let data: Json3File;
+  try {
+    data = JSON.parse(captionContent);
+  } catch {
+    throw new Error("Failed to parse caption data");
+  }
+
+  const transcript: TranscriptSegment[] = (data.events ?? [])
+    .filter((ev): ev is Json3Event & { segs: Json3Seg[] } => !!ev.segs?.length)
+    .map((ev) => ({
+      start: ev.tStartMs / 1000,
+      duration: ev.dDurationMs / 1000,
+      text: ev.segs.map((s) => s.utf8).join("").replace(/\n/g, " ").trim(),
+    }))
+    .filter((seg) => seg.text.length > 0);
+
+  if (transcript.length === 0) throw new Error("No captions available for this video");
+
+  return { metadata, transcript };
 }

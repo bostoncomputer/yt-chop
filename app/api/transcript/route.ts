@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Unexpected error";
     const lower = message.toLowerCase();
     let status = 500;
-    if (lower.includes("not found")) status = 404;
+    if (lower.includes("not found") || lower.includes("unavailable")) status = 404;
     else if (lower.includes("private") || lower.includes("age-restricted") || lower.includes("unplayable")) status = 403;
     else if (lower.includes("no transcript") || lower.includes("no captions")) status = 422;
     return NextResponse.json({ ok: false, error: message }, { status });
