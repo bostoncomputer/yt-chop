@@ -4,7 +4,7 @@ YouTube transcript extractor and clip generator. Paste a YouTube URL, fetch the 
 
 ## Build Phases
 
-- **Phase 1 (current)** — Scaffold + transcript pipeline. Next.js 15, TypeScript, Tailwind. URL parsing, transcript fetch, metadata, raw display.
+- **Phase 1 (complete)** — Scaffold + transcript pipeline. Next.js 15, TypeScript, Tailwind. URL parsing, transcript fetch, metadata, raw display. Transcript fetch uses yt-dlp subprocess (NOT youtube-transcript or youtubei.js — both were blocked by YouTube anti-bot). App is local-only; Vercel deployment's transcript route is non-functional. Requires `yt-dlp` installed via `pip install -U yt-dlp` on the host machine.
 - Phase 2 — Segment selection UI: click-to-select transcript segments, preview selected text, copy to clipboard.
 - Phase 3 — Clip generation: send selected segments to an LLM to rewrite/summarize as a script.
 - Phase 4 — Export: download transcript as TXT/SRT, share links.
