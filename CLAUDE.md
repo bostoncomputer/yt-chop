@@ -43,9 +43,10 @@ yt-chop/
 
 ## Key Decisions
 
-- `youtube-transcript` v1.3.1 — segments return `{ offset, duration, text }` where offset/duration are **milliseconds**. `lib/transcript.ts` converts to seconds on the way out.
-- oEmbed endpoint (`youtube.com/oembed`) used for video title/channel metadata. It only accepts `watch?v=` URLs — Shorts and embed URLs 404.
-- Error classes from `youtube-transcript` (`YoutubeTranscriptDisabledError`, `YoutubeTranscriptNotAvailableError`) are caught and surfaced as a clean "No captions available" message with HTTP 422.
+- `youtubei.js` — used for all YouTube data. `Innertube.create({ generate_session_locally: true })` creates a session without an extra network round-trip. `getInfo(videoId)` returns player + next responses in one call; `basic_info` contains title, channel, and duration.
+- Transcript is fetched via the timedtext API (`info.captions.caption_tracks[n].base_url + "&fmt=json3"`), not the InnerTube continuation endpoint (which returns 400 server-side). Events return `{ tStartMs, dDurationMs, segs: [{utf8}] }` in milliseconds; `lib/transcript.ts` converts to seconds on the way out.
+- Track selection: manual English → auto-generated English → first available track. No oEmbed call needed — metadata comes from `basic_info`.
+- Videos with no caption tracks throw `"No captions available for this video"` which the route converts to HTTP 422.
 - Tailwind v4 — uses `@import "tailwindcss"` and `@theme inline {}` blocks, not a separate `tailwind.config.js`.
 
 ## Dev
