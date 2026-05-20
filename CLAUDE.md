@@ -5,9 +5,10 @@ YouTube transcript extractor and clip generator. Paste a YouTube URL, fetch the 
 ## Build Phases
 
 - **Phase 1 (complete)** — Scaffold + transcript pipeline. Next.js 15, TypeScript, Tailwind. URL parsing, transcript fetch, metadata, raw display. Transcript fetch uses yt-dlp subprocess (NOT youtube-transcript or youtubei.js — both were blocked by YouTube anti-bot). App is local-only; Vercel deployment's transcript route is non-functional. Requires `yt-dlp` installed via `pip install -U yt-dlp` on the host machine.
-- Phase 2 — Segment selection UI: click-to-select transcript segments, preview selected text, copy to clipboard.
-- Phase 3 — Clip generation: send selected segments to an LLM to rewrite/summarize as a script.
-- Phase 4 — Export: download transcript as TXT/SRT, share links.
+- **Phase 2 (complete)** — Audit pipeline. `lib/schema.ts` (Audit/Claim/Verification types), `lib/prompts.ts` (AUDIT_PROMPT + VERIFY_PROMPT verbatim from spec), `lib/anthropic.ts` (raw fetch wrapper), `POST /api/audit` (edge runtime). Page auto-fires audit after transcript; renders raw JSON. Tested against 3 videos (TED talks spanning high/mixed credibility and low/high padding).
+- Phase 3 — Card UI: VerdictCard, ClaimCard, BadgeStack, YouTubeEmbed.
+- Phase 4 — Verify button + web_search per-claim fact-checking.
+- Phase 5 — Export + localStorage history.
 
 ## Design Tokens
 
@@ -27,8 +28,10 @@ YouTube transcript extractor and clip generator. Paste a YouTube URL, fetch the 
 yt-chop/
 ├── app/
 │   ├── api/
-│   │   └── transcript/
-│   │       └── route.ts       # POST /api/transcript — accepts { url }
+│   │   ├── transcript/
+│   │   │   └── route.ts       # POST /api/transcript — node runtime, yt-dlp subprocess
+│   │   └── audit/
+│   │       └── route.ts       # POST /api/audit — edge runtime, Claude Haiku 4.5
 │   ├── globals.css            # Design tokens + base styles
 │   ├── layout.tsx             # Root layout with fonts
 │   └── page.tsx               # Single-page client component
@@ -36,7 +39,10 @@ yt-chop/
 │   └── UrlInput.tsx           # URL input + fetch form
 ├── lib/
 │   ├── youtube.ts             # extractVideoId(url) — URL parser
-│   └── transcript.ts         # fetchTranscript(videoId) — transcript + metadata
+│   ├── transcript.ts         # fetchTranscript(videoId) — yt-dlp subprocess, json3 captions
+│   ├── schema.ts             # Audit, Claim, Verification types
+│   ├── prompts.ts            # AUDIT_PROMPT, VERIFY_PROMPT (verbatim from spec)
+│   └── anthropic.ts          # callClaude({ model, system, user, tools?, max_tokens })
 ├── CLAUDE.md                  # This file
 └── YTChop_BuildSpec_v1_0.docx # Original build specification
 ```
@@ -49,6 +55,8 @@ yt-chop/
 - **Output template** — uses `ytchop-%(id)s` (no `%(ext)s`) so the caption file is predictably `ytchop-{videoId}.en.json3` in the temp dir. File is deleted after parsing.
 - Videos with no English auto-sub track produce no caption file; `lib/transcript.ts` detects the missing file and throws `"No captions available for this video"` → HTTP 422.
 - yt-dlp may warn about missing JS runtime (Deno/Node.js for PO token); install `deno` or pass `--js-runtimes nodejs` to suppress. The extractor works without it but some throttled videos may hit 429.
+- **Audit route** — edge runtime; model `claude-haiku-4-5-20251001`; formats transcript as `[MM:SS] text` lines. Haiku does not reliably follow a schema described only in prose, so a JSON skeleton is appended to the *user* message (not the system prompt, which is spec-locked). Response extraction uses `extractJson` (find first `{`/last `}`) instead of a fence-stripping regex — Claude 4.5 Haiku intermittently prepends whitespace before the opening fence, defeating `^`-anchored regex.
+- **`lib/prompts.ts`** — AUDIT_PROMPT and VERIFY_PROMPT are verbatim from spec Section 5. Do not paraphrase or shorten; they are the product.
 - Tailwind v4 — uses `@import "tailwindcss"` and `@theme inline {}` blocks, not a separate `tailwind.config.js`.
 
 ## Dev

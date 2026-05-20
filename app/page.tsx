@@ -3,17 +3,14 @@
 import { useState } from "react";
 import UrlInput from "@/components/UrlInput";
 import type { TranscriptResult } from "@/lib/transcript";
+import type { Audit } from "@/lib/schema";
 
-interface ResultData {
+type Phase = "idle" | "fetching" | "auditing";
+
+interface TranscriptData {
   videoId: string;
   metadata: TranscriptResult["metadata"];
   transcript: TranscriptResult["transcript"];
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -21,24 +18,71 @@ function formatDuration(seconds: number | null): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
 
-export default function Home() {
-  const [result, setResult] = useState<ResultData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+const LOADING_LABELS: Record<Phase, string> = {
+  idle: "",
+  fetching: "Fetching…",
+  auditing: "Auditing…",
+};
 
-  function handleResult(data: ResultData | null | undefined, err?: string) {
-    if (data) {
-      setResult(data);
-      setError(null);
-    } else {
-      setResult(null);
-      setError(err ?? "Something went wrong");
+export default function Home() {
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
+  const [audit, setAudit] = useState<Audit | null>(null);
+
+  async function handleSubmit(url: string) {
+    setError(null);
+    setTranscriptData(null);
+    setAudit(null);
+
+    // Step 1: fetch transcript
+    setPhase("fetching");
+    let td: TranscriptData;
+    try {
+      const res = await fetch("/api/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await res.json();
+      if (!json.ok || !json.data) throw new Error(json.error ?? "Transcript fetch failed");
+      td = json.data as TranscriptData;
+      setTranscriptData(td);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Transcript fetch failed");
+      setPhase("idle");
+      return;
+    }
+
+    // Step 2: audit
+    setPhase("auditing");
+    try {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId: td.videoId,
+          url,
+          metadata: td.metadata,
+          transcript: td.transcript,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok || !json.data) throw new Error(json.error ?? "Audit failed");
+      setAudit(json.data as Audit);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audit failed");
+    } finally {
+      setPhase("idle");
     }
   }
+
+  const loading = phase !== "idle";
 
   return (
     <main className="flex flex-col items-center min-h-screen px-4 py-16 gap-12">
@@ -48,63 +92,66 @@ export default function Home() {
           YT CHOP
         </h1>
         <p className="font-mono text-xs text-zinc-500 tracking-widest uppercase">
-          Transcript Extractor — Phase 1
+          Audit Pipeline — Phase 2
         </p>
       </div>
 
       {/* Input */}
-      <div className="w-full max-w-2xl">
-        <UrlInput onResult={handleResult} />
+      <div className="w-full max-w-2xl flex flex-col gap-3">
+        <UrlInput
+          onSubmit={handleSubmit}
+          loading={loading}
+          loadingLabel={LOADING_LABELS[phase]}
+        />
+
+        {/* Loading status */}
+        {loading && (
+          <p className="font-mono text-xs text-amber-400/70 tracking-widest uppercase animate-pulse">
+            {phase === "fetching" ? "Fetching transcript…" : "Auditing claims…"}
+          </p>
+        )}
       </div>
 
-      {/* Error state */}
+      {/* Error */}
       {error && (
         <div className="w-full max-w-2xl p-4 rounded-lg border border-red-800 bg-red-950/30">
           <p className="font-mono text-sm text-red-400">{error}</p>
         </div>
       )}
 
-      {/* Result */}
-      {result && (
-        <div className="w-full max-w-2xl flex flex-col gap-6">
-          {/* Metadata card */}
-          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60 flex flex-col gap-2">
-            <h2 className="font-display text-2xl text-amber-400 tracking-wide leading-tight">
-              {result.metadata.title}
+      {/* Transcript metadata (while audit loads) */}
+      {transcriptData && !audit && !error && (
+        <div className="w-full max-w-2xl p-5 rounded-lg border border-zinc-800 bg-zinc-900/60 flex flex-col gap-1">
+          <h2 className="font-display text-xl text-amber-400 tracking-wide leading-tight">
+            {transcriptData.metadata.title}
+          </h2>
+          <p className="font-mono text-xs text-zinc-400">
+            {transcriptData.metadata.channel} · {formatDuration(transcriptData.metadata.durationSeconds)} · {transcriptData.transcript.length} segments
+          </p>
+        </div>
+      )}
+
+      {/* Raw audit JSON — Phase 3 replaces this with cards */}
+      {audit && (
+        <div className="w-full max-w-4xl flex flex-col gap-4">
+          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60 flex flex-col gap-1">
+            <h2 className="font-display text-xl text-amber-400 tracking-wide leading-tight">
+              {audit.metadata.title}
             </h2>
-            <div className="flex gap-6 font-mono text-xs text-zinc-400">
-              <span>{result.metadata.channel}</span>
-              <span className="text-zinc-600">|</span>
-              <span>{formatDuration(result.metadata.durationSeconds)}</span>
-              <span className="text-zinc-600">|</span>
-              <span>{result.transcript.length} segments</span>
-              <span className="text-zinc-600">|</span>
-              <span className="text-zinc-600">id: {result.videoId}</span>
-            </div>
+            <p className="font-mono text-xs text-zinc-400">
+              {audit.metadata.channel} · {formatDuration(audit.metadata.durationSeconds)} · {audit.claims.length} claims
+            </p>
           </div>
 
-          {/* Transcript */}
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden">
             <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/60">
               <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
-                Raw Transcript
+                Raw Audit JSON — Phase 3 will render cards
               </span>
             </div>
-            <div className="overflow-y-auto max-h-[60vh] divide-y divide-zinc-800/50">
-              {result.transcript.map((seg, i) => (
-                <div
-                  key={i}
-                  className="flex gap-4 px-4 py-2 hover:bg-zinc-800/30 transition-colors"
-                >
-                  <span className="font-mono text-xs text-amber-500/70 shrink-0 w-12 pt-0.5">
-                    {formatTime(seg.start)}
-                  </span>
-                  <p className="font-mono text-sm text-zinc-300 leading-relaxed">
-                    {seg.text}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <pre className="overflow-auto p-4 font-mono text-xs text-zinc-300 leading-relaxed max-h-[70vh]">
+              {JSON.stringify(audit, null, 2)}
+            </pre>
           </div>
         </div>
       )}
