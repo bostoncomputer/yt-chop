@@ -6,8 +6,8 @@ YouTube transcript extractor and clip generator. Paste a YouTube URL, fetch the 
 
 - **Phase 1 (complete)** — Scaffold + transcript pipeline. Next.js 15, TypeScript, Tailwind. URL parsing, transcript fetch, metadata, raw display. Transcript fetch uses yt-dlp subprocess (NOT youtube-transcript or youtubei.js — both were blocked by YouTube anti-bot). App is local-only; Vercel deployment's transcript route is non-functional. Requires `yt-dlp` installed via `pip install -U yt-dlp` on the host machine.
 - **Phase 2 (complete)** — Audit pipeline. `lib/schema.ts` (Audit/Claim/Verification types), `lib/prompts.ts` (AUDIT_PROMPT + VERIFY_PROMPT verbatim from spec), `lib/anthropic.ts` (raw fetch wrapper), `POST /api/audit` (edge runtime). Page auto-fires audit after transcript; renders raw JSON. Tested against 3 videos (TED talks spanning high/mixed credibility and low/high padding).
-- Phase 3 — Card UI: VerdictCard, ClaimCard, BadgeStack, YouTubeEmbed.
-- Phase 4 — Verify button + web_search per-claim fact-checking.
+- **Phase 3 (complete)** — Card UI: VerdictCard, ClaimCard, BadgeStack, YouTubeEmbed. Replaced raw JSON pre with proper card layout. Single openClaimId state for mutual-exclusive inline embeds.
+- **Phase 4 (complete)** — Per-claim verification. POST /api/verify (nodejs runtime, claude-sonnet-4-6 + web_search_20250305). VerifyButton, VerifyResult components. Verifications lifted into separate useState in page.tsx; re-check link replaces button after first verify. JSON schema template appended to user message (same pattern as audit route) to fix Sonnet's key naming. lib/anthropic.ts updated: ContentBlock.type widened to string, betas[] param added.
 - Phase 5 — Export + localStorage history.
 
 ## Design Tokens
@@ -65,3 +65,16 @@ yt-chop/
 npm run dev      # http://localhost:3000
 npx tsc --noEmit # type check
 ```
+
+## v1.1 — Genre-aware audits (post-MVP)
+
+After Phase 5 ships, add genre routing:
+1. New /api/classify endpoint (Haiku, ~$0.0005/call)
+2. Genre-specific AUDIT_PROMPT_* constants in /lib/prompts.ts
+3. UI badge with override dropdown before audit fires
+4. Initial genres: General (current), Finance/Stock guru
+
+Finance prompt additions:
+- New claim type: Prediction (target + timeframe)
+- New flags: Position_Undisclosed, Chart_Dependent, Post_Hoc_Win_Claim
+- New verdict field: predictions[] array

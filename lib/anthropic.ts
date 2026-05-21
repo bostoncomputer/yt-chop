@@ -1,5 +1,5 @@
 export interface ContentBlock {
-  type: "text" | "tool_use";
+  type: string; // text | tool_use | server_tool_use | web_search_tool_result
   text?: string;
   id?: string;
   name?: string;
@@ -12,6 +12,7 @@ interface CallClaudeParams {
   user: string;
   tools?: object[];
   max_tokens?: number;
+  betas?: string[];
 }
 
 export async function callClaude({
@@ -20,6 +21,7 @@ export async function callClaude({
   user,
   tools,
   max_tokens = 8192,
+  betas,
 }: CallClaudeParams): Promise<ContentBlock[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
@@ -32,13 +34,16 @@ export async function callClaude({
   };
   if (tools?.length) body.tools = tools;
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+  };
+  if (betas?.length) headers["anthropic-beta"] = betas.join(",");
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers,
     body: JSON.stringify(body),
   });
 

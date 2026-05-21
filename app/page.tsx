@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import UrlInput from "@/components/UrlInput";
+import VerdictCard from "@/components/VerdictCard";
+import ClaimCard from "@/components/ClaimCard";
 import type { TranscriptResult } from "@/lib/transcript";
-import type { Audit } from "@/lib/schema";
+import type { Audit, Verification } from "@/lib/schema";
 
 type Phase = "idle" | "fetching" | "auditing";
 
@@ -34,13 +36,20 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
   const [audit, setAudit] = useState<Audit | null>(null);
+  const [openClaimId, setOpenClaimId] = useState<string | null>(null);
+  const [verifications, setVerifications] = useState<Audit["verifications"]>({});
+
+  function handleVerified(v: Verification) {
+    setVerifications((prev) => ({ ...prev, [v.claim_id]: v }));
+  }
 
   async function handleSubmit(url: string) {
     setError(null);
     setTranscriptData(null);
     setAudit(null);
+    setOpenClaimId(null);
+    setVerifications({});
 
-    // Step 1: fetch transcript
     setPhase("fetching");
     let td: TranscriptData;
     try {
@@ -59,7 +68,6 @@ export default function Home() {
       return;
     }
 
-    // Step 2: audit
     setPhase("auditing");
     try {
       const res = await fetch("/api/audit", {
@@ -92,7 +100,7 @@ export default function Home() {
           YT CHOP
         </h1>
         <p className="font-mono text-xs text-zinc-500 tracking-widest uppercase">
-          Audit Pipeline — Phase 2
+          AI Audit — Phase 4
         </p>
       </div>
 
@@ -103,8 +111,6 @@ export default function Home() {
           loading={loading}
           loadingLabel={LOADING_LABELS[phase]}
         />
-
-        {/* Loading status */}
         {loading && (
           <p className="font-mono text-xs text-amber-400/70 tracking-widest uppercase animate-pulse">
             {phase === "fetching" ? "Fetching transcript…" : "Auditing claims…"}
@@ -119,40 +125,46 @@ export default function Home() {
         </div>
       )}
 
-      {/* Transcript metadata (while audit loads) */}
+      {/* Transcript metadata while audit loads */}
       {transcriptData && !audit && !error && (
         <div className="w-full max-w-2xl p-5 rounded-lg border border-zinc-800 bg-zinc-900/60 flex flex-col gap-1">
           <h2 className="font-display text-xl text-amber-400 tracking-wide leading-tight">
             {transcriptData.metadata.title}
           </h2>
           <p className="font-mono text-xs text-zinc-400">
-            {transcriptData.metadata.channel} · {formatDuration(transcriptData.metadata.durationSeconds)} · {transcriptData.transcript.length} segments
+            {transcriptData.metadata.channel} ·{" "}
+            {formatDuration(transcriptData.metadata.durationSeconds)} ·{" "}
+            {transcriptData.transcript.length} segments
           </p>
         </div>
       )}
 
-      {/* Raw audit JSON — Phase 3 replaces this with cards */}
+      {/* Card output */}
       {audit && (
-        <div className="w-full max-w-4xl flex flex-col gap-4">
-          <div className="p-5 rounded-lg border border-zinc-800 bg-zinc-900/60 flex flex-col gap-1">
-            <h2 className="font-display text-xl text-amber-400 tracking-wide leading-tight">
-              {audit.metadata.title}
-            </h2>
-            <p className="font-mono text-xs text-zinc-400">
-              {audit.metadata.channel} · {formatDuration(audit.metadata.durationSeconds)} · {audit.claims.length} claims
-            </p>
+        <div className="w-full max-w-3xl flex flex-col gap-5">
+          <VerdictCard audit={audit} />
+
+          <div className="flex items-center gap-3 px-1">
+            <div className="flex-1 h-px bg-zinc-800" />
+            <span className="font-mono text-xs text-zinc-600 uppercase tracking-widest">
+              {audit.claims.length} claims
+            </span>
+            <div className="flex-1 h-px bg-zinc-800" />
           </div>
 
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-            <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/60">
-              <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
-                Raw Audit JSON — Phase 3 will render cards
-              </span>
-            </div>
-            <pre className="overflow-auto p-4 font-mono text-xs text-zinc-300 leading-relaxed max-h-[70vh]">
-              {JSON.stringify(audit, null, 2)}
-            </pre>
-          </div>
+          {audit.claims.map((claim, i) => (
+            <ClaimCard
+              key={claim.id}
+              claim={claim}
+              index={i}
+              videoId={audit.id}
+              isEmbedOpen={openClaimId === claim.id}
+              onEmbedOpen={() => setOpenClaimId(claim.id)}
+              onEmbedClose={() => setOpenClaimId(null)}
+              verification={verifications[claim.id]}
+              onVerified={handleVerified}
+            />
+          ))}
         </div>
       )}
     </main>
