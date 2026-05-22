@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaude } from "@/lib/anthropic";
+import { callClaude, type CachedSystemBlock } from "@/lib/anthropic";
 import { AUDIT_PROMPT } from "@/lib/prompts";
+
+const CACHED_AUDIT_SYSTEM: CachedSystemBlock = {
+  type: "text",
+  text: AUDIT_PROMPT,
+  cache_control: { type: "ephemeral" },
+};
 import type { Audit, Claim } from "@/lib/schema";
 import type { TranscriptSegment } from "@/lib/transcript";
 
@@ -81,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     const content = await callClaude({
       model: "claude-haiku-4-5-20251001",
-      system: AUDIT_PROMPT,
+      system: CACHED_AUDIT_SYSTEM,
       user: userMessage,
       max_tokens: 8192,
     });

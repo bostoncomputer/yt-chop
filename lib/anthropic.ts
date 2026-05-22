@@ -6,9 +6,15 @@ export interface ContentBlock {
   input?: unknown;
 }
 
+export interface CachedSystemBlock {
+  type: "text";
+  text: string;
+  cache_control: { type: "ephemeral" };
+}
+
 interface CallClaudeParams {
   model: string;
-  system: string;
+  system: string | CachedSystemBlock;
   user: string;
   tools?: object[];
   max_tokens?: number;
@@ -26,12 +32,23 @@ export async function callClaude({
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
+  const activeBetas = betas ? [...betas] : [];
+
   const body: Record<string, unknown> = {
     model,
     max_tokens,
-    system,
     messages: [{ role: "user", content: user }],
   };
+
+  if (typeof system === "string") {
+    body.system = system;
+  } else {
+    body.system = [system];
+    if (!activeBetas.includes("prompt-caching-2024-07-31")) {
+      activeBetas.push("prompt-caching-2024-07-31");
+    }
+  }
+
   if (tools?.length) body.tools = tools;
 
   const headers: Record<string, string> = {
@@ -39,7 +56,7 @@ export async function callClaude({
     "x-api-key": apiKey,
     "anthropic-version": "2023-06-01",
   };
-  if (betas?.length) headers["anthropic-beta"] = betas.join(",");
+  if (activeBetas.length) headers["anthropic-beta"] = activeBetas.join(",");
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

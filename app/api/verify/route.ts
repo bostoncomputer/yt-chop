@@ -55,10 +55,10 @@ export async function POST(req: NextRequest) {
       );
 
     const content = await callClaude({
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5-20251001",
       system: VERIFY_PROMPT,
       user: userMessage,
-      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
       max_tokens: 4096,
       betas: ["web-search-2025-03-05"],
     });

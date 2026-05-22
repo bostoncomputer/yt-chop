@@ -38,7 +38,7 @@ export default function VerifyButton({ claim, onVerified, existingVerification }
         onClick={handleVerify}
         className="font-mono text-xs text-zinc-600 hover:text-zinc-400 transition-colors underline underline-offset-2"
       >
-        ✓ Verified — re-check
+        ✓ Investigated — re-check
       </button>
     );
   }
@@ -53,12 +53,12 @@ export default function VerifyButton({ claim, onVerified, existingVerification }
         {loading ? (
           <>
             <span className="inline-block w-3 h-3 border border-zinc-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            Checking sources…
+            Investigating…
           </>
         ) : (
           <>
             <span className="text-zinc-500">🌐</span>
-            Verify with web
+            Investigate further
           </>
         )}
       </button>
