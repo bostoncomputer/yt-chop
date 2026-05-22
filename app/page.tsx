@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UrlInput from "@/components/UrlInput";
 import VerdictCard from "@/components/VerdictCard";
 import ClaimCard from "@/components/ClaimCard";
+import ExportButton from "@/components/ExportButton";
+import HistoryDrawer from "@/components/HistoryDrawer";
+import { saveAudit, loadAudit } from "@/lib/storage";
 import type { TranscriptResult } from "@/lib/transcript";
 import type { Audit, Verification } from "@/lib/schema";
 
@@ -38,9 +41,29 @@ export default function Home() {
   const [audit, setAudit] = useState<Audit | null>(null);
   const [openClaimId, setOpenClaimId] = useState<string | null>(null);
   const [verifications, setVerifications] = useState<Audit["verifications"]>({});
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Load audit from ?v= query param on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("v");
+    if (v) {
+      const stored = loadAudit(v);
+      if (stored) {
+        setAudit(stored);
+        setVerifications(stored.verifications ?? {});
+      }
+    }
+  }, []);
 
   function handleVerified(v: Verification) {
-    setVerifications((prev) => ({ ...prev, [v.claim_id]: v }));
+    setVerifications((prev) => {
+      const updated = { ...prev, [v.claim_id]: v };
+      if (audit) {
+        saveAudit({ ...audit, verifications: updated });
+      }
+      return updated;
+    });
   }
 
   async function handleSubmit(url: string) {
@@ -82,7 +105,9 @@ export default function Home() {
       });
       const json = await res.json();
       if (!json.ok || !json.data) throw new Error(json.error ?? "Audit failed");
-      setAudit(json.data as Audit);
+      const freshAudit = json.data as Audit;
+      setAudit(freshAudit);
+      saveAudit(freshAudit);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Audit failed");
     } finally {
@@ -91,6 +116,7 @@ export default function Home() {
   }
 
   const loading = phase !== "idle";
+  const auditWithVerifications = audit ? { ...audit, verifications } : null;
 
   return (
     <main className="flex flex-col items-center min-h-screen px-4 py-16 gap-12">
@@ -100,8 +126,19 @@ export default function Home() {
           YT CHOP
         </h1>
         <p className="font-mono text-xs text-zinc-500 tracking-widest uppercase">
-          AI Audit — Phase 4
+          AI Audit — Phase 5
         </p>
+        {/* Header actions */}
+        <div className="flex items-center gap-2 mt-2">
+          <ExportButton audit={auditWithVerifications} />
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="font-mono text-xs text-zinc-400 hover:text-amber-400 transition-colors border border-zinc-700 hover:border-amber-400/50 rounded-lg px-3 py-1.5"
+            title="View audit history"
+          >
+            ☰ History
+          </button>
+        </div>
       </div>
 
       {/* Input */}
@@ -167,6 +204,9 @@ export default function Home() {
           ))}
         </div>
       )}
+
+      {/* History drawer */}
+      <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </main>
   );
 }
