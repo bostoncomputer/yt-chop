@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
 
     const content = await callClaude({
-      model: "claude-sonnet-4-5-20251001",
+      model: "claude-sonnet-4-6",
       system: VERIFY_PROMPT,
       user: userMessage,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
