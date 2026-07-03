@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/
+
+# scratch / temp verification files
+verify_*.mjs
+*verify_phase3*.mjs
+-w
