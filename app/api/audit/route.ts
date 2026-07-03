@@ -1,39 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callClaude, type CachedSystemBlock } from "@/lib/anthropic";
 import { AUDIT_PROMPT } from "@/lib/prompts";
+import { formatTranscript } from "@/lib/format-transcript";
+import type { Audit, Claim } from "@/lib/schema";
+import type { TranscriptSegment } from "@/lib/transcript";
+
+export const runtime = "edge";
 
 const CACHED_AUDIT_SYSTEM: CachedSystemBlock = {
   type: "text",
   text: AUDIT_PROMPT,
   cache_control: { type: "ephemeral" },
 };
-import type { Audit, Claim } from "@/lib/schema";
-import type { TranscriptSegment } from "@/lib/transcript";
-
-export const runtime = "edge";
-
-function toMMSS(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function formatTranscript(segments: TranscriptSegment[]): string {
-  return segments
-    .map((seg) => `[${toMMSS(seg.start)}] ${seg.text}`)
-    .join("\n");
-}
 
 function extractJson(raw: string): string {
-  // Find first { or [ and last } or ] — robust against leading/trailing fences or prose
   const start = raw.search(/[{[]/);
   if (start === -1) return raw;
   const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
   return end > start ? raw.slice(start, end + 1) : raw.slice(start);
 }
 
-// Explicit JSON template appended to user message so Haiku matches the schema.
-// System prompt (AUDIT_PROMPT) is spec-locked and not modified.
 const JSON_SCHEMA_TEMPLATE = `
 
 Respond with ONLY this JSON structure, no other text:
@@ -85,8 +71,8 @@ export async function POST(req: NextRequest) {
       `Video: ${metadata.title}\nChannel: ${metadata.channel}\nDuration: ${metadata.durationSeconds}s\n\nTRANSCRIPT:\n${formatTranscript(transcript)}` +
       JSON_SCHEMA_TEMPLATE;
 
-    const content = await callClaude({
-      model: "claude-haiku-4-5-20251001",
+    const { content, usage } = await callClaude({
+      model: "claude-haiku-4-5",
       system: CACHED_AUDIT_SYSTEM,
       user: userMessage,
       max_tokens: 8192,
@@ -95,7 +81,7 @@ export async function POST(req: NextRequest) {
     const textBlock = content.find((b) => b.type === "text");
     if (!textBlock?.text) throw new Error("No text response from Claude");
 
-    let parsed: { video: Audit["video"]; claims: Claim[] };
+    let parsed: { video: NonNullable<Audit["video"]>; claims: Claim[] };
     try {
       parsed = JSON.parse(extractJson(textBlock.text));
     } catch {
@@ -118,7 +104,7 @@ export async function POST(req: NextRequest) {
       verifications: {},
     };
 
-    return NextResponse.json({ ok: true, data: audit });
+    return NextResponse.json({ ok: true, data: audit, usage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error";
     const lower = message.toLowerCase();

@@ -4,7 +4,8 @@ export function parseTimestamp(ts: string): number {
   return parts[0] * 60 + parts[1];
 }
 
-export function formatTimestamp(seconds: number): string {
+export function formatTimestamp(seconds: number | null): string {
+  if (seconds === null) return "—";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);

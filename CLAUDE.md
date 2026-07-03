@@ -7,7 +7,7 @@ YouTube transcript extractor and clip generator. Paste a YouTube URL, fetch the 
 - **Phase 1 (complete)** — Scaffold + transcript pipeline. Next.js 15, TypeScript, Tailwind. URL parsing, transcript fetch, metadata, raw display. Transcript fetch uses yt-dlp subprocess (NOT youtube-transcript or youtubei.js — both were blocked by YouTube anti-bot). App is local-only; Vercel deployment's transcript route is non-functional. Requires `yt-dlp` installed via `pip install -U yt-dlp` on the host machine.
 - **Phase 2 (complete)** — Audit pipeline. `lib/schema.ts` (Audit/Claim/Verification types), `lib/prompts.ts` (AUDIT_PROMPT + VERIFY_PROMPT verbatim from spec), `lib/anthropic.ts` (raw fetch wrapper), `POST /api/audit` (edge runtime). Page auto-fires audit after transcript; renders raw JSON. Tested against 3 videos (TED talks spanning high/mixed credibility and low/high padding).
 - **Phase 3 (complete)** — Card UI: VerdictCard, ClaimCard, BadgeStack, YouTubeEmbed. Replaced raw JSON pre with proper card layout. Single openClaimId state for mutual-exclusive inline embeds.
-- **Phase 4 (complete)** — Per-claim verification. POST /api/verify (nodejs runtime, claude-sonnet-4-6 + web_search_20250305). VerifyButton, VerifyResult components. Verifications lifted into separate useState in page.tsx; re-check link replaces button after first verify. JSON schema template appended to user message (same pattern as audit route) to fix Sonnet's key naming. lib/anthropic.ts updated: ContentBlock.type widened to string, betas[] param added.
+- **Phase 4 (complete)** — Per-claim verification. POST /api/verify (nodejs runtime, claude-sonnet-5 + web_search_20250305). VerifyButton, VerifyResult components. Verifications lifted into separate useState in page.tsx; re-check link replaces button after first verify. JSON schema template appended to user message (same pattern as audit route) to fix Sonnet's key naming. lib/anthropic.ts updated: ContentBlock.type widened to string, betas[] param added.
 - Phase 5 — Export + localStorage history.
 
 ## Design Tokens
@@ -78,3 +78,33 @@ Finance prompt additions:
 - New claim type: Prediction (target + timeframe)
 - New flags: Position_Undisclosed, Chart_Dependent, Post_Hoc_Win_Claim
 - New verdict field: predictions[] array
+
+
+## v1.1 — Extraction modes (current phase)
+
+Design: YTChop_BuildSpec_v1_1.docx (full phase prompts there).
+
+**Scope (this build):** claims + tldr + trades only. Dropped: clean_transcript,
+action_checklist, predictions, PDF.
+
+**Model strings (authoritative — override older spec):**
+- Extraction modes: claude-haiku-4-5
+- Verify: claude-sonnet-5 (stays Sonnet; string bumped from 4-6, not switched to Haiku)
+- Obsolete, never reintroduce: claude-sonnet-4-5*, claude-sonnet-4-6
+
+**Architecture:** single audit → MODES registry (/lib/modes.ts, single source of truth).
+Dispatch: POST /api/extract { mode, metadata, transcript, sourceType } → { ok, mode,
+data, usage }. Claims stays top-level (video/claims/verifications); new modes →
+audit.outputs[mode]. Additive, no migration.
+
+**Input:** YouTube | Paste Text tab. Paste → sourceType 'text', metadata channel/duration
+null, skip /api/transcript. Timestamps/embed inert on text.
+
+**Cost counter:** /lib/pricing.ts + costFromUsage(usage). Blended session total, ≈
+prefix, session-only (resets on reload/?v=). Verify cost folds into same total. Rates:
+in $1 / out $5 / cacheW $1.25 / cacheR $0.10 per MTok, web search $0.01/call.
+
+**Build order:** A (registry+paste+cost) → C (trades) → D-trimmed (txt export only).
+Sequential build-then-test.
+
+**Open decision:** verify Sonnet-vs-Haiku (~3× cost) — deferred until counter shows data.

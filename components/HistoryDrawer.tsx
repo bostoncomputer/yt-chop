@@ -80,10 +80,15 @@ export default function HistoryDrawer({ open, onClose }: Props) {
             </p>
           ) : (
             audits.map((audit) => {
-              const color = WATCH_COLORS[audit.video.worth_watching] ?? "#f0f0f0";
               const date = audit.fetchedAt
                 ? new Date(audit.fetchedAt).toLocaleDateString()
                 : "";
+              const hasVerdict = !!audit.video;
+              const color = hasVerdict
+                ? (WATCH_COLORS[audit.video!.worth_watching] ?? "#f0f0f0")
+                : "#71717a";
+              const badge = hasVerdict ? audit.video!.worth_watching : "tldr";
+
               return (
                 <div
                   key={audit.id}
@@ -95,14 +100,14 @@ export default function HistoryDrawer({ open, onClose }: Props) {
                     className="font-mono text-xs font-bold uppercase mt-0.5 flex-shrink-0 px-2 py-0.5 rounded"
                     style={{ color, backgroundColor: `${color}22` }}
                   >
-                    {audit.video.worth_watching}
+                    {badge}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-xs text-zinc-200 truncate leading-snug">
                       {audit.metadata.title}
                     </p>
                     <p className="font-mono text-xs text-zinc-600 mt-0.5">
-                      {audit.metadata.channel} · {date}
+                      {audit.metadata.channel ?? "Text"} · {date}
                     </p>
                   </div>
                   <button

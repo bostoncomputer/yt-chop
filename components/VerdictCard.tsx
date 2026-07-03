@@ -17,9 +17,12 @@ function MetaBadge({ label, value }: { label: string; value: string }) {
 }
 
 export default function VerdictCard({ audit }: { audit: Audit }) {
-  const { video, metadata, id } = audit;
+  const { video, metadata, id, sourceType } = audit;
+  if (!video) return null;
+
   const watchColor = WATCH_COLORS[video.worth_watching] ?? "#f0f0f0";
   const duration = formatTimestamp(metadata.durationSeconds);
+  const isVideo = sourceType !== "text";
 
   return (
     <div
@@ -28,12 +31,14 @@ export default function VerdictCard({ audit }: { audit: Audit }) {
     >
       {/* Video metadata row */}
       <div className="flex gap-4 items-start">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`}
-          alt=""
-          className="w-36 h-auto rounded-lg object-cover flex-shrink-0 border border-zinc-800"
-        />
+        {isVideo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`}
+            alt=""
+            className="w-36 h-auto rounded-lg object-cover flex-shrink-0 border border-zinc-800"
+          />
+        )}
         <div className="flex flex-col gap-1 min-w-0">
           <p
             className="font-display leading-tight tracking-wide"
@@ -42,7 +47,7 @@ export default function VerdictCard({ audit }: { audit: Audit }) {
             {metadata.title}
           </p>
           <p className="font-mono text-xs text-zinc-400">
-            {metadata.channel} · {duration}
+            {metadata.channel ? `${metadata.channel} · ` : ""}{duration}
           </p>
           {video.extracted_topic !== metadata.title && (
             <p className="font-mono text-xs text-zinc-600 mt-1 leading-relaxed line-clamp-2">

@@ -1,16 +1,26 @@
+export type ExtractionMode =
+  | "claims"
+  | "tldr"
+  | "clean_transcript"
+  | "action_checklist"
+  | "trades"
+  | "predictions";
+
+export type SourceType = "video" | "text";
+
 export type Audit = {
-  id: string;                       // YouTube video ID
+  id: string;
   url: string;
-  fetchedAt: string;                // ISO timestamp
+  fetchedAt: string;
   metadata: {
     title: string;
-    channel: string;
-    durationSeconds: number;
+    channel: string | null;
+    durationSeconds: number | null;
   };
-  video: {
-    extracted_topic: string;        // Claude's own framing, not YouTube title
-    verdict: string;                // one punchy sentence
-    summary: string;                // 2-3 sentences
+  video?: {
+    extracted_topic: string;
+    verdict: string;
+    summary: string;
     padding_ratio: "low" | "medium" | "high";
     monetization_motive: "none" | "soft" | "hard";
     overall_credibility: "high" | "mixed" | "low";
@@ -19,13 +29,15 @@ export type Audit = {
   };
   claims: Claim[];
   verifications: { [claimId: string]: Verification };
+  outputs?: Partial<Record<ExtractionMode, unknown>>;
+  sourceType?: SourceType;
 };
 
 export type Claim = {
-  id: string;                       // 'claim_1', 'claim_2'...
-  title: string;                    // plain English, ~8-10 words
-  explanation: string;              // 2-3 sentences, direct register
-  timestamp_start: string;          // 'MM:SS' or 'HH:MM:SS'
+  id: string;
+  title: string;
+  explanation: string;
+  timestamp_start: string;
   timestamp_end: string;
   claim_type: "Tactic" | "Statistic" | "Anecdote" | "Opinion" | "Framework" | "Case_Study";
   substantiation: "Sourced" | "Specific" | "Vague" | "Anecdotal" | "Unsupported";

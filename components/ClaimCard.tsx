@@ -1,6 +1,6 @@
 "use client";
 
-import type { Claim, Verification } from "@/lib/schema";
+import type { Claim, Verification, SourceType } from "@/lib/schema";
 import BadgeStack from "@/components/BadgeStack";
 import YouTubeEmbed from "@/components/YouTubeEmbed";
 import VerifyButton from "@/components/VerifyButton";
@@ -11,26 +11,31 @@ interface Props {
   claim: Claim;
   index: number;
   videoId: string;
+  sourceType?: SourceType;
   isEmbedOpen: boolean;
   onEmbedOpen: () => void;
   onEmbedClose: () => void;
   verification?: Verification;
   onVerified: (v: Verification) => void;
+  onCostAdded?: (cost: number) => void;
 }
 
 export default function ClaimCard({
   claim,
   index,
   videoId,
+  sourceType,
   isEmbedOpen,
   onEmbedOpen,
   onEmbedClose,
   verification,
   onVerified,
+  onCostAdded,
 }: Props) {
   const startSeconds = parseTimestamp(claim.timestamp_start);
   const endSeconds = parseTimestamp(claim.timestamp_end);
   const claimNum = String(index + 1).padStart(2, "0");
+  const isText = sourceType === "text";
 
   return (
     <div
@@ -68,22 +73,29 @@ export default function ClaimCard({
 
       {/* Bottom row: timestamp ← → verify */}
       <div className="flex items-center justify-between mt-1">
-        <button
-          onClick={isEmbedOpen ? onEmbedClose : onEmbedOpen}
-          className="font-mono text-xs text-amber-400 hover:text-amber-300 transition-colors border border-amber-400/25 hover:border-amber-400/50 rounded-lg px-3 py-1.5"
-        >
-          🎬 {claim.timestamp_start} – {claim.timestamp_end}
-        </button>
+        {isText ? (
+          <span className="font-mono text-xs text-zinc-600 border border-zinc-800 rounded-lg px-3 py-1.5">
+            {claim.timestamp_start} – {claim.timestamp_end}
+          </span>
+        ) : (
+          <button
+            onClick={isEmbedOpen ? onEmbedClose : onEmbedOpen}
+            className="font-mono text-xs text-amber-400 hover:text-amber-300 transition-colors border border-amber-400/25 hover:border-amber-400/50 rounded-lg px-3 py-1.5"
+          >
+            🎬 {claim.timestamp_start} – {claim.timestamp_end}
+          </button>
+        )}
 
         <VerifyButton
           claim={claim}
           onVerified={onVerified}
           existingVerification={verification}
+          onCostAdded={onCostAdded}
         />
       </div>
 
-      {/* Inline YouTube embed */}
-      {isEmbedOpen && (
+      {/* Inline YouTube embed — only for video source */}
+      {!isText && isEmbedOpen && (
         <YouTubeEmbed
           videoId={videoId}
           startSeconds={startSeconds}
@@ -92,7 +104,7 @@ export default function ClaimCard({
         />
       )}
 
-      {/* Verification result — rendered inside the card, visually tied to it */}
+      {/* Verification result */}
       {verification && <VerifyResult verification={verification} />}
     </div>
   );

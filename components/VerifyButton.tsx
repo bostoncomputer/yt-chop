@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import type { Claim, Verification } from "@/lib/schema";
+import { costFromUsage } from "@/lib/pricing";
 
 interface Props {
   claim: Claim;
   onVerified: (v: Verification) => void;
   existingVerification?: Verification;
+  onCostAdded?: (cost: number) => void;
 }
 
-export default function VerifyButton({ claim, onVerified, existingVerification }: Props) {
+export default function VerifyButton({ claim, onVerified, existingVerification, onCostAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +26,9 @@ export default function VerifyButton({ claim, onVerified, existingVerification }
       });
       const json = await res.json();
       if (!json.ok || !json.data) throw new Error(json.error ?? "Verification failed");
+      if (json.usage && onCostAdded) {
+        onCostAdded(costFromUsage(json.usage));
+      }
       onVerified(json.data as Verification);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");

@@ -12,6 +12,19 @@ export interface CachedSystemBlock {
   cache_control: { type: "ephemeral" };
 }
 
+export interface ClaudeUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  server_tool_use?: { web_search_requests?: number };
+}
+
+export interface ClaudeResponse {
+  content: ContentBlock[];
+  usage: ClaudeUsage;
+}
+
 interface CallClaudeParams {
   model: string;
   system: string | CachedSystemBlock;
@@ -28,7 +41,7 @@ export async function callClaude({
   tools,
   max_tokens = 8192,
   betas,
-}: CallClaudeParams): Promise<ContentBlock[]> {
+}: CallClaudeParams): Promise<ClaudeResponse> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
@@ -70,5 +83,8 @@ export async function callClaude({
   }
 
   const data = await res.json();
-  return data.content as ContentBlock[];
+  return {
+    content: data.content as ContentBlock[],
+    usage: data.usage as ClaudeUsage,
+  };
 }

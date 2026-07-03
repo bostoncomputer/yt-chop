@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
         2
       );
 
-    const content = await callClaude({
-      model: "claude-sonnet-4-6",
+    const { content, usage } = await callClaude({
+      model: "claude-sonnet-5",
       system: VERIFY_PROMPT,
       user: userMessage,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
@@ -66,7 +66,6 @@ export async function POST(req: NextRequest) {
     const searchCount = content.filter((b) => b.type === "server_tool_use").length;
     console.log(`[verify] claim=${claim.id} title="${claim.title}" web_searches=${searchCount}`);
 
-    // Last text block is the final answer — Claude emits text before/between searches too
     const textBlocks = content.filter((b) => b.type === "text" && b.text);
     if (!textBlocks.length) throw new Error("No text response from Claude");
     const rawText = textBlocks[textBlocks.length - 1].text!;
@@ -90,7 +89,7 @@ export async function POST(req: NextRequest) {
       verifiedAt: new Date().toISOString(),
     };
 
-    return NextResponse.json({ ok: true, data: verification });
+    return NextResponse.json({ ok: true, data: verification, usage });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unexpected error";
     const lower = message.toLowerCase();
